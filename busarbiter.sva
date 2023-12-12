@@ -1,0 +1,85 @@
+// @lang=sva @ts=2
+
+module busarbitersuit(clk, reset, bus_req, bus_grant, bus_ack); 
+
+input logic clk;
+input logic reset;
+
+input logic [2:0] bus_req;
+input logic [2:0] bus_grant;
+input logic bus_ack;
+
+parameter READY = 1'b0;
+parameter BUSY  = 1'b1;
+
+parameter NO_REQUEST = 3'b000; 
+parameter NO_GRANT = 3'b000; 
+
+// System Verilog library for TiDAL
+`include "tidal.sv"
+
+// TIDAL properties must be enclosed within begin_tda and end_tda macros
+`begin_sva(sva)
+
+// your definitions...
+	property p_reset;
+		reset |-> bus_grant == NO_GRANT;
+	endproperty
+
+	property p_at_most_one_grant;
+		bus_grant[0]+bus_grant[1]+bus_grant[2]<2;
+	endproperty
+
+	property p_at_most_one_grant_1;
+		bus_grant[0] |-> (!bus_grant[1] && !bus_grant[2]);
+		//bus_grant[0] |-> (!bus_grant[1] && !bus_grant[2]) || bus_grant[1] |-> (!bus_grant[0] && !bus_grant[2])  || bus_grant[2] |-> (!bus_grant[1] && !bus_grant[0]);
+	endproperty
+	property p_at_most_one_grant_2;
+		bus_grant[1] |-> (!bus_grant[0] && !bus_grant[2]);
+	endproperty
+	property p_at_most_one_grant_3;
+		bus_grant[2] |-> (!bus_grant[1] && !bus_grant[0]);
+	endproperty
+	property p_grant_stable;
+		//bus_grant != NO_GRANT |=> ##[1:$] (bus_grant != NO_GRANT && !bus_ack);
+		bus_grant != NO_GRANT && bus_ack != 1 |=> $stable(bus_grant) ;
+	endproperty
+	property p_arbitration_master0;
+		(bus_req[0] && bus_grant== NO_GRANT)|| (bus_ack && bus_req[0]) |=>  (bus_grant[0] && !bus_grant[1] && !bus_grant[2]);
+	endproperty
+
+	property p_arbitration_master1;
+		(bus_req[1] && !bus_req[0] && bus_grant== NO_GRANT) || (bus_ack && bus_req[1]&& !bus_req[0])|=>  (!bus_grant[0] && bus_grant[1] && !bus_grant[2]);
+	endproperty
+
+	property p_arbitration_master2;
+		(bus_req[2] && !bus_req[1] && !bus_req[0] && bus_grant== NO_GRANT) || (bus_ack && bus_req[2]&& !bus_req[0] &&  !bus_req[1]) |=>  (!bus_grant[0] && !bus_grant[1] && bus_grant[2]);
+	endproperty
+
+	property p_grant_master1;
+		//bus_grant[1] implies ($past(bus_req[1]) && !$past(bus_req[0]));
+		$rose(bus_grant[1]) implies ($past(bus_req[1]) && !$past(bus_req[0]));
+	endproperty
+	property p_grant_master2;
+		//bus_grant[2] implies ($past(bus_req[2]) && !$past(bus_req[1]) && !$past(bus_req[0]));
+		$rose(bus_grant[2]) implies ($past(bus_req[2]) && !$past(bus_req[1]) && !$past(bus_req[0]));
+	endproperty
+
+// assertions
+	a_reset: assert property(@(posedge clk) p_reset);
+	a_atmostone: assert property(@(posedge clk) disable iff(reset) p_at_most_one_grant);
+	a_atmostone_1: assert property(@(posedge clk) disable iff(reset) p_at_most_one_grant_1);
+	a_atmostone_2: assert property(@(posedge clk) disable iff(reset) p_at_most_one_grant_2);
+	a_atmostone_3: assert property(@(posedge clk) disable iff(reset) p_at_most_one_grant_3);
+	a_grantstable: assert property(@(posedge clk) disable iff(reset) p_grant_stable);
+	a_arbmaster0: assert property(@(posedge clk) disable iff(reset) p_arbitration_master0);
+	a_arbmaster1: assert property(@(posedge clk) disable iff(reset) p_arbitration_master1);
+	a_arbmaster2: assert property(@(posedge clk) disable iff(reset) p_arbitration_master2);
+	a_grantmaster1: assert property(@(posedge clk) disable iff(reset) p_grant_master1);
+	a_grantmaster2: assert property(@(posedge clk) disable iff(reset) p_grant_master2);
+// ...
+	`end_sva
+endmodule
+
+bind busarbiter busarbitersuit inst_busarbitersuit(.*); 
+
